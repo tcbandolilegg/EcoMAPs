@@ -4,7 +4,7 @@
  */
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, ActionCodeSettings } from 'firebase/auth';
-import { auth, db, doc, getDoc, setDoc, signInWithPopup, googleProvider, signOut, serverTimestamp, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, deleteDoc, query, collection, where, getDocs } from '../lib/firebase';
+import { auth, db, doc, getDoc, setDoc, signInWithPopup, googleProvider, signOut, serverTimestamp, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, deleteDoc, query, collection, where, getDocs, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Language, UserProfile } from '../types';
 
 interface AuthContextType {
@@ -32,32 +32,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(user);
       if (user) {
         const userDocRef = doc(db, 'users', user.uid);
-        let userDoc = await getDoc(userDocRef);
+        let userDoc;
+        try {
+          userDoc = await getDoc(userDocRef);
+        } catch (error) {
+          handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
+          return;
+        }
         
         // If profile doesn't exist by UID, check for pre-registration by email
         if (!userDoc.exists() && user.email) {
           const emailDocRef = doc(db, 'users', user.email.toLowerCase());
-          const emailDoc = await getDoc(emailDocRef);
-          
-          if (emailDoc.exists()) {
-            const preRegData = emailDoc.data() as UserProfile;
-            // Migrate: Create UID doc and delete Email doc
-            await setDoc(userDocRef, { 
-              ...preRegData, 
-              createdAt: preRegData.createdAt || serverTimestamp(),
-              lastLogin: serverTimestamp() 
-            });
-            await deleteDoc(emailDocRef);
-            userDoc = await getDoc(userDocRef);
+          try {
+            const emailDoc = await getDoc(emailDocRef);
+            
+            if (emailDoc.exists()) {
+              const preRegData = emailDoc.data() as UserProfile;
+              // Migrate: Create UID doc and delete Email doc
+              await setDoc(userDocRef, { 
+                ...preRegData, 
+                createdAt: preRegData.createdAt || serverTimestamp(),
+                lastLogin: serverTimestamp() 
+              });
+              await deleteDoc(emailDocRef);
+              userDoc = await getDoc(userDocRef);
+            }
+          } catch (error) {
+            console.error("Migration/Check error:", error);
           }
         }
 
-        if (userDoc.exists()) {
+        if (userDoc?.exists()) {
           const data = userDoc.data() as UserProfile;
           // Security: In case the user was already registered as 'user' but is the admin email
           const isMaster = user.email?.toLowerCase() === 'tcbandolilegg@gmail.com';
           if (isMaster && data.role !== 'admin') {
-            await setDoc(doc(db, 'users', user.uid), { ...data, role: 'admin' }, { merge: true });
+            try {
+              await setDoc(doc(db, 'users', user.uid), { ...data, role: 'admin' }, { merge: true });
+            } catch (err) {
+              console.error("Admin role upgrade failed:", err);
+            }
             setProfile({ ...data, role: 'admin' });
           } else {
             setProfile(data);
@@ -71,8 +85,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             role: role as any,
             createdAt: serverTimestamp(),
           };
-          await setDoc(doc(db, 'users', user.uid), newProfile);
-          setProfile(newProfile);
+          try {
+            await setDoc(doc(db, 'users', user.uid), newProfile);
+            setProfile(newProfile);
+          } catch (error) {
+            handleFirestoreError(error, OperationType.CREATE, `users/${user.uid}`);
+          }
         }
       } else {
         setProfile(null);
@@ -142,7 +160,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ...additionalData
       };
 
-      await setDoc(doc(db, 'users', user.uid), newProfile);
+      try {
+        await setDoc(doc(db, 'users', user.uid), newProfile);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, `users/${user.uid}`);
+      }
       setProfile(newProfile);
     } catch (error) {
       console.error("Registration failed:", error);

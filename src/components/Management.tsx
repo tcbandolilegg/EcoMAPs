@@ -5,7 +5,7 @@
 import React, { useState, useRef } from 'react';
 import { Plus, Table, History, User as UserIcon, Calendar, CheckCircle2, Trash2, Camera, MapPin as MapPinIcon, ShieldCheck, XCircle, LogOut, Edit, Users, Flag, Truck, Search, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { db, collection, addDoc, serverTimestamp, deleteDoc, doc, updateDoc, onSnapshot, query, orderBy, setDoc, getDoc, where, getDocs } from '../lib/firebase';
+import { db, collection, addDoc, serverTimestamp, deleteDoc, doc, updateDoc, onSnapshot, query, orderBy, setDoc, getDoc, where, getDocs, handleFirestoreError, OperationType } from '../lib/firebase';
 import { CollectionPoint, UserProfile, RecyclingRoute } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { fetchAddressByCEP } from '../services/locationService';
@@ -297,6 +297,7 @@ export default function Management({ points }: { points: CollectionPoint[] }) {
   const handleAddPoint = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    const collectionName = 'collectionPoints';
     try {
       const data = {
         ...formData,
@@ -307,7 +308,7 @@ export default function Management({ points }: { points: CollectionPoint[] }) {
       };
 
       if (isEditing && editingPointId) {
-        await updateDoc(doc(db, 'collectionPoints', editingPointId), {
+        await updateDoc(doc(db, collectionName, editingPointId), {
           ...data,
           updatedAt: serverTimestamp()
         });
@@ -315,7 +316,7 @@ export default function Management({ points }: { points: CollectionPoint[] }) {
         cancelEditing();
       } else {
         const isAdminStatus = profile?.role === 'admin';
-        await addDoc(collection(db, 'collectionPoints'), {
+        await addDoc(collection(db, collectionName), {
           ...data,
           createdBy: user.uid,
           createdByName: user.displayName || profile?.firstName,
@@ -330,7 +331,7 @@ export default function Management({ points }: { points: CollectionPoint[] }) {
       }
       setTimeout(() => setSuccess(false), 3000);
     } catch (error) {
-      console.error("Error processing point:", error);
+      handleFirestoreError(error, isEditing ? OperationType.UPDATE : OperationType.CREATE, isEditing ? `${collectionName}/${editingPointId}` : collectionName);
     } finally {
       setLoading(false);
     }
@@ -380,19 +381,13 @@ export default function Management({ points }: { points: CollectionPoint[] }) {
 
   const confirmDelete = async () => {
     const { id, type } = deleteConfirm;
+    const collectionName = type === 'point' ? 'collectionPoints' : (type === 'user' ? 'users' : 'recyclingRoutes');
     setLoading(true);
     try {
-      if (type === 'point') {
-        await deleteDoc(doc(db, 'collectionPoints', id));
-      } else if (type === 'user') {
-        await deleteDoc(doc(db, 'users', id));
-      } else if ((type as any) === 'route') {
-        await deleteDoc(doc(db, 'recyclingRoutes', id));
-      }
+      await deleteDoc(doc(db, collectionName, id));
       setDeleteConfirm(prev => ({ ...prev, show: false }));
     } catch (error) {
-      console.error(`Error deleting ${type}:`, error);
-      alert(`Erro ao excluir ${type === 'point' ? 'ponto' : 'usuário'}. Verifique suas permissões.`);
+      handleFirestoreError(error, OperationType.DELETE, `${collectionName}/${id}`);
     } finally {
       setLoading(false);
     }
@@ -401,11 +396,12 @@ export default function Management({ points }: { points: CollectionPoint[] }) {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    const collectionName = 'users';
     try {
       const emailId = userFormData.email.toLowerCase().trim();
       
       if (isEditingUser && editingUserId) {
-        await updateDoc(doc(db, 'users', editingUserId), {
+        await updateDoc(doc(db, collectionName, editingUserId), {
           ...userFormData,
           updatedAt: serverTimestamp(),
         });
@@ -413,14 +409,14 @@ export default function Management({ points }: { points: CollectionPoint[] }) {
         cancelEditingUser();
       } else {
         // Check if email already exists (as ID or in field)
-        const emailDoc = await getDoc(doc(db, 'users', emailId));
+        const emailDoc = await getDoc(doc(db, collectionName, emailId));
         if (emailDoc.exists()) {
           alert("Este e-mail já está cadastrado.");
           setLoading(false);
           return;
         }
 
-        const q = query(collection(db, 'users'), where('email', '==', emailId));
+        const q = query(collection(db, collectionName), where('email', '==', emailId));
         const querySnapshot = await getDocs(q);
         if (!querySnapshot.empty) {
           alert("Este e-mail já está cadastrado.");
@@ -428,7 +424,7 @@ export default function Management({ points }: { points: CollectionPoint[] }) {
           return;
         }
 
-        await setDoc(doc(db, 'users', emailId), {
+        await setDoc(doc(db, collectionName, emailId), {
           ...userFormData,
           email: emailId,
           createdAt: serverTimestamp(),
@@ -438,8 +434,7 @@ export default function Management({ points }: { points: CollectionPoint[] }) {
       }
       setTimeout(() => setSuccess(false), 3000);
     } catch (error) {
-      console.error("Error processing user:", error);
-      alert("Erro ao processar usuário.");
+      handleFirestoreError(error, isEditingUser ? OperationType.UPDATE : OperationType.CREATE, isEditingUser ? `${collectionName}/${editingUserId}` : `${collectionName}/${userFormData.email.toLowerCase().trim()}`);
     } finally {
       setLoading(false);
     }
@@ -473,35 +468,38 @@ export default function Management({ points }: { points: CollectionPoint[] }) {
   };
 
   const handleApprovePoint = async (pointId: string) => {
+    const collectionName = 'collectionPoints';
     try {
-      await updateDoc(doc(db, 'collectionPoints', pointId), {
+      await updateDoc(doc(db, collectionName, pointId), {
         status: 'active'
       });
     } catch (error) {
-      console.error("Error approving point:", error);
+      handleFirestoreError(error, OperationType.UPDATE, `${collectionName}/${pointId}`);
     }
   };
 
   const handleRejectPoint = async (pointId: string) => {
     if (!window.confirm("Deseja rejeitar/desativar este ponto de coleta?")) return;
+    const collectionName = 'collectionPoints';
     try {
-      await updateDoc(doc(db, 'collectionPoints', pointId), {
+      await updateDoc(doc(db, collectionName, pointId), {
         status: 'rejected',
         updatedAt: serverTimestamp()
       });
     } catch (error) {
-      console.error("Error rejecting point:", error);
+      handleFirestoreError(error, OperationType.UPDATE, `${collectionName}/${pointId}`);
     }
   };
 
   const handleTogglePointStatus = async (pointId: string, newStatus: 'active' | 'rejected') => {
+    const collectionName = 'collectionPoints';
     try {
-      await updateDoc(doc(db, 'collectionPoints', pointId), {
+      await updateDoc(doc(db, collectionName, pointId), {
         status: newStatus,
         updatedAt: serverTimestamp()
       });
     } catch (error) {
-      console.error("Error toggling point status:", error);
+      handleFirestoreError(error, OperationType.UPDATE, `${collectionName}/${pointId}`);
     }
   };
 
@@ -512,16 +510,17 @@ export default function Management({ points }: { points: CollectionPoint[] }) {
       return;
     }
     setLoading(true);
+    const collectionName = 'recyclingRoutes';
     try {
       if (isEditingRoute && editingRouteId) {
-        await updateDoc(doc(db, 'recyclingRoutes', editingRouteId), {
+        await updateDoc(doc(db, collectionName, editingRouteId), {
           ...routeFormData,
           updatedAt: serverTimestamp()
         });
         setSuccess(true);
         cancelEditingRoute();
       } else {
-        await addDoc(collection(db, 'recyclingRoutes'), {
+        await addDoc(collection(db, collectionName), {
           ...routeFormData,
           createdBy: user?.uid,
           createdByName: user?.displayName || profile?.firstName || 'Anônimo',
@@ -532,8 +531,7 @@ export default function Management({ points }: { points: CollectionPoint[] }) {
       }
       setTimeout(() => setSuccess(false), 3000);
     } catch (error) {
-      console.error("Error processing route:", error);
-      alert("Erro ao salvar rota.");
+      handleFirestoreError(error, isEditingRoute ? OperationType.UPDATE : OperationType.CREATE, isEditingRoute ? `${collectionName}/${editingRouteId}` : collectionName);
     } finally {
       setLoading(false);
     }
@@ -579,8 +577,9 @@ export default function Management({ points }: { points: CollectionPoint[] }) {
     e.preventDefault();
     if (!reportReason.trim()) return;
     setLoading(true);
+    const collectionName = 'reports';
     try {
-      await addDoc(collection(db, 'reports'), {
+      await addDoc(collection(db, collectionName), {
         pointId: reportModal.pointId,
         pointName: reportModal.pointName,
         reportedBy: user?.uid,
@@ -594,8 +593,7 @@ export default function Management({ points }: { points: CollectionPoint[] }) {
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (error) {
-      console.error("Error reporting point:", error);
-      alert("Erro ao enviar denúncia.");
+      handleFirestoreError(error, OperationType.CREATE, collectionName);
     } finally {
       setLoading(false);
     }

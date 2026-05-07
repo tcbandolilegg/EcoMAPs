@@ -17,7 +17,7 @@ import { CollectionPoint, Language, RecyclingRoute } from './types';
 import { TRANSLATIONS } from './translations';
 import { fetchStates, fetchCitiesByState, IBGEState, IBGECity } from './services/locationService';
 import { useAuth } from './contexts/AuthContext';
-import { db, collection, onSnapshot, query, orderBy, where } from './lib/firebase';
+import { db, collection, onSnapshot, query, orderBy, where, handleFirestoreError, OperationType } from './lib/firebase';
 
 export default function App() {
   const { user, profile } = useAuth();
@@ -71,7 +71,7 @@ export default function App() {
       console.log(`Loaded ${data.length} points from Firestore`);
       setFirestorePoints(data);
     }, (error) => {
-      console.error("Firestore points listener error:", error);
+      handleFirestoreError(error, OperationType.LIST, 'collectionPoints');
     });
     return () => unsubscribe();
   }, [user, profile]);
@@ -82,7 +82,7 @@ export default function App() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setFirestoreRoutes(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RecyclingRoute)));
     }, (error) => {
-      console.error("Firestore routes listener error:", error);
+      handleFirestoreError(error, OperationType.LIST, 'recyclingRoutes');
     });
     return () => unsubscribe();
   }, []);

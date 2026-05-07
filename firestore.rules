@@ -12,53 +12,138 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
     function isMasterAdmin() {
       return isSignedIn() && request.auth.token.email == 'tcbandolilegg@gmail.com';
     }
 
-    function hasRole(role) {
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    // RBAC lookups
+    function getUserData(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function userHasRole(role) {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData(request.auth.uid).role == role;
     }
 
     function isAdmin() {
-      return isMasterAdmin() || hasRole('admin');
+      return isMasterAdmin() || userHasRole('admin');
     }
 
     function isModerator() {
-      return isAdmin() || hasRole('moderator');
+      return isAdmin() || userHasRole('moderator');
     }
 
+    // --- Validation Blueprints ---
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'role', 'createdAt'])
+        && data.keys().size() == 3
+        && data.email is string && data.email.size() <= 256
+        && data.role in ['user', 'moderator', 'admin']
+        && data.createdAt == request.time;
+    }
+
+    function isValidCollectionPoint(data) {
+      return data.keys().hasAll(['name', 'lat', 'lng', 'type', 'createdBy', 'createdAt'])
+        && data.name is string && data.name.size() <= 100
+        && data.lat is number && data.lng is number
+        && data.type in ['PEV', 'Ecoponto', 'Cooperativa']
+        && data.createdBy == request.auth.uid
+        && data.createdAt == request.time
+        && (!('status' in data) || data.status in ['pending', 'active', 'rejected'])
+        && (!('acceptedItems' in data) || (data.acceptedItems is list && data.acceptedItems.size() <= 20))
+        && (!('description' in data) || (data.description is string && data.description.size() <= 1000));
+    }
+
+    function isValidReport(data) {
+      return data.keys().hasAll(['pointId', 'reportedBy', 'reason', 'status', 'createdAt'])
+        && data.pointId is string && isValidId(data.pointId)
+        && data.reportedBy == request.auth.uid
+        && data.reason is string && data.reason.size() <= 500
+        && data.status in ['pending', 'reviewed', 'resolved']
+        && data.createdAt == request.time;
+    }
+
+    function isValidRecyclingRoute(data) {
+      return data.keys().hasAll(['state', 'city', 'neighborhood', 'days', 'period', 'createdBy', 'createdAt'])
+        && data.state is string && data.state.size() <= 50
+        && data.city is string && data.city.size() <= 100
+        && data.neighborhood is string && data.neighborhood.size() <= 100
+        && data.days is list && data.days.size() <= 7
+        && data.period in ['manhã', 'tarde', 'noite']
+        && data.createdBy == request.auth.uid
+        && data.createdAt == request.time;
+    }
+
+    // --- Rules ---
+
     match /users/{userId} {
-      allow get: if isSignedIn() && (request.auth.uid == userId || isMasterAdmin() || hasRole('admin'));
+      allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
       
-      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow update: if isMasterAdmin() || hasRole('admin') || request.auth.uid == userId;
-      allow delete: if isAdmin();
+      allow create: if isOwner(userId) && isValidUser(incoming()) && incoming().role == 'user';
+      
+      allow update: if (isOwner(userId) || isAdmin()) 
+        && (
+          // Owner can't change their own role
+          (isOwner(userId) && !isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['email'])) ||
+          // Admin can change roles
+          isAdmin()
+        );
     }
 
     match /collectionPoints/{pointId} {
-      allow list, get: if isAdmin() || isModerator() || (!('status' in resource.data)) || (resource.data.status == 'active') || (isSignedIn() && resource.data.createdBy == request.auth.uid);
+      allow get: if isValidId(pointId) && (
+        isModerator() || 
+        resource.data.status == 'active' || 
+        resource.data.createdBy == request.auth.uid
+      );
+      
+      allow list: if isModerator() || (
+        resource.data.status == 'active'
+      );
 
-      allow create: if isSignedIn()
-        && request.resource.data.createdBy == request.auth.uid
-        && (
-          (request.resource.data.status == 'pending') || 
-          (isModerator() && request.resource.data.status == 'active')
-        );
+      allow create: if isEmailVerified() && isValidCollectionPoint(incoming()) && (
+        (incoming().status == 'pending') || 
+        (isModerator() && incoming().status == 'active')
+      );
 
-      allow update: if isModerator() || (isSignedIn() && resource.data.createdBy == request.auth.uid);
-      allow delete: if isAdmin() || (isSignedIn() && resource.data.createdBy == request.auth.uid);
+      allow update: if isValidId(pointId) && (
+        (isModerator() && isValidCollectionPoint(incoming())) ||
+        (isOwner(existing().createdBy) && isValidCollectionPoint(incoming()) && incoming().status == existing().status)
+      );
+
+      allow delete: if isValidId(pointId) && (isAdmin() || isOwner(existing().createdBy));
     }
 
     match /reports/{reportId} {
-      allow create: if isSignedIn();
+      allow create: if isEmailVerified() && isValidReport(incoming()) && incoming().status == 'pending';
       allow read, update, delete: if isModerator();
     }
 
     match /recyclingRoutes/{routeId} {
-      allow read: if true;
-      allow create, update, delete: if isModerator();
+      allow read: if isValidId(routeId);
+      allow create, update, delete: if isModerator() && isValidRecyclingRoute(incoming());
     }
   }
 }
