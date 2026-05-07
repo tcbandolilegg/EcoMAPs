@@ -52,9 +52,9 @@ app.get('/api/health', (req, res) => {
 app.get('/favicon.ico', (req, res) => {
   const faviconPath = path.join(distPath, 'favicon.svg');
   if (fs.existsSync(faviconPath)) {
+    res.setHeader('Content-Type', 'image/svg+xml');
     res.sendFile(faviconPath);
   } else {
-    // Tenta favicon.ico padrão se existir
     const icoPath = path.join(distPath, 'favicon.ico');
     if (fs.existsSync(icoPath)) {
         res.sendFile(icoPath);
