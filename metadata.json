@@ -1,5 +1,5 @@
 {
-  "name": "EcoMaps: Coleta Seletiva",
+  "name": "EcoMaps: Aplicativo de pontos de Coleta Seletiva",
   "description": "Um guia completo para coleta seletiva, pontos de descarte e educação ambiental.",
   "requestFramePermissions": [
     "geolocation",

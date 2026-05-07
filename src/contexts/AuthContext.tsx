@@ -4,7 +4,7 @@
  */
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, ActionCodeSettings } from 'firebase/auth';
-import { auth, db, doc, getDoc, setDoc, signInWithPopup, googleProvider, signOut, serverTimestamp, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, deleteDoc, query, collection, where, getDocs, handleFirestoreError, OperationType } from '../lib/firebase';
+import { auth, db, doc, getDoc, setDoc, signInWithPopup, signInWithRedirect, getRedirectResult, googleProvider, signOut, serverTimestamp, createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, deleteDoc, query, collection, where, getDocs, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Language, UserProfile } from '../types';
 
 interface AuthContextType {
@@ -27,6 +27,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Standard provider config
     googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+    // Handle redirect result
+    getRedirectResult(auth).then((result) => {
+      if (result?.user) {
+        console.log("Logged in via redirect:", result.user.email);
+      }
+    }).catch((error) => {
+      console.error("Redirect login error details:", {
+        code: error.code,
+        message: error.message,
+        domain: window.location.hostname
+      });
+      if (error.code === 'auth/unauthorized-domain') {
+        alert("Erro: Domínio não autorizado no Console do Firebase. Adicione " + window.location.hostname + " em Authentication > Settings > Authorized domains.");
+      }
+    });
 
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
       setUser(user);
@@ -103,7 +119,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      // Check if it's mobile to choose method
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
+      if (isMobile) {
+        await signInWithRedirect(auth, googleProvider);
+      } else {
+        await signInWithPopup(auth, googleProvider);
+      }
     } catch (error: any) {
       if (error?.code === 'auth/cancelled-popup-request' || error?.code === 'auth/popup-closed-by-user') {
         console.warn("Login cancelled by user or multiple requests.");
