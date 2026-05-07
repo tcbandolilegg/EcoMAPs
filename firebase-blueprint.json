@@ -1,0 +1,87 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile with role-based access control.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["user", "moderator", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role", "createdAt"]
+    },
+    "CollectionPoint": {
+      "title": "Collection Point",
+      "description": "A georeferenced recycling or disposal point.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "state": { "type": "string" },
+        "city": { "type": "string" },
+        "neighborhood": { "type": "string" },
+        "type": { "type": "string", "enum": ["PEV", "Ecoponto", "Cooperativa"] },
+        "acceptedItems": { "type": "array", "items": { "type": "string" } },
+        "description": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "status": { "type": "string", "enum": ["pending", "active", "rejected"] },
+        "imageUrl": { "type": "string" }
+      },
+      "required": ["name", "lat", "lng", "type", "createdBy", "createdAt"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "A report regarding a collection point.",
+      "type": "object",
+      "properties": {
+        "pointId": { "type": "string" },
+        "pointName": { "type": "string" },
+        "reportedBy": { "type": "string" },
+        "reportedByName": { "type": "string" },
+        "reason": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "resolved"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["pointId", "reportedBy", "reason", "status", "createdAt"]
+    },
+    "RecyclingRoute": {
+      "title": "Recycling Route",
+      "description": "A scheduled recycling collection route for a neighborhood.",
+      "type": "object",
+      "properties": {
+        "state": { "type": "string" },
+        "city": { "type": "string" },
+        "neighborhood": { "type": "string" },
+        "days": { "type": "array", "items": { "type": "string" } },
+        "period": { "type": "string", "enum": ["manhã", "tarde", "noite"] },
+        "createdBy": { "type": "string" },
+        "createdByName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["state", "city", "neighborhood", "days", "period", "createdBy", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Storage for user profiles and roles."
+    },
+    "/collectionPoints/{pointId}": {
+      "schema": "CollectionPoint",
+      "description": "Storage for all recycling collection points."
+    },
+    "/reports/{reportId}": {
+      "schema": "Report",
+      "description": "Storage for reports submitted by users."
+    },
+    "/recyclingRoutes/{routeId}": {
+      "schema": "RecyclingRoute",
+      "description": "Storage for recycling collection schedules/routes."
+    }
+  }
+}

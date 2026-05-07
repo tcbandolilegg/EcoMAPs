@@ -1,0 +1,9 @@
+{
+  "name": "EcoMaps: Coleta Seletiva",
+  "description": "Um guia completo para coleta seletiva, pontos de descarte e educação ambiental.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera"
+  ],
+  "majorCapabilities": []
+}

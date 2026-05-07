@@ -1,0 +1,64 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isMasterAdmin() {
+      return isSignedIn() && request.auth.token.email == 'tcbandolilegg@gmail.com';
+    }
+
+    function hasRole(role) {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+
+    function isAdmin() {
+      return isMasterAdmin() || hasRole('admin');
+    }
+
+    function isModerator() {
+      return isAdmin() || hasRole('moderator');
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isMasterAdmin() || hasRole('admin'));
+      allow list: if isAdmin();
+      
+      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow update: if isMasterAdmin() || hasRole('admin') || request.auth.uid == userId;
+      allow delete: if isAdmin();
+    }
+
+    match /collectionPoints/{pointId} {
+      allow list, get: if isAdmin() || isModerator() || (!('status' in resource.data)) || (resource.data.status == 'active') || (isSignedIn() && resource.data.createdBy == request.auth.uid);
+
+      allow create: if isSignedIn()
+        && request.resource.data.createdBy == request.auth.uid
+        && (
+          (request.resource.data.status == 'pending') || 
+          (isModerator() && request.resource.data.status == 'active')
+        );
+
+      allow update: if isModerator() || (isSignedIn() && resource.data.createdBy == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.createdBy == request.auth.uid);
+    }
+
+    match /reports/{reportId} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if isModerator();
+    }
+
+    match /recyclingRoutes/{routeId} {
+      allow read: if true;
+      allow create, update, delete: if isModerator();
+    }
+  }
+}
