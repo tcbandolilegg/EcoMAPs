@@ -6,7 +6,7 @@ import { Language } from './types';
 
 export const TRANSLATIONS: Record<Language, any> = {
   'pt-BR': {
-    appName: 'EcoMap',
+    appName: 'EcoMaps',
     tagline: 'Sustentabilidade em Movimento',
     heroTitle: 'Sua cidade mais limpa, um descarte por vez.',
     heroSubtitle: 'Encontre pontos de coleta, consulte horários e aprenda como transformar seu resíduo em recurso valioso para o planeta.',
@@ -37,7 +37,7 @@ export const TRANSLATIONS: Record<Language, any> = {
     pointsFound: 'Pontos de Coleta Encontrados',
   },
   'pt-PT': {
-    appName: 'EcoMap',
+    appName: 'EcoMaps',
     tagline: 'Sustentabilidade em Movimento',
     heroTitle: 'A sua cidade mais limpa, um descarte de cada vez.',
     heroSubtitle: 'Encontre pontos de recolha, consulte horários e aprenda como transformar o seu resíduo em recurso valioso para o planeta.',
@@ -68,7 +68,7 @@ export const TRANSLATIONS: Record<Language, any> = {
     pointsFound: 'Pontos de Recolha Encontrados',
   },
   'en': {
-    appName: 'EcoMap',
+    appName: 'EcoMaps',
     tagline: 'Sustainability in Motion',
     heroTitle: 'A cleaner city, one disposal at a time.',
     heroSubtitle: 'Find collection points, check schedules, and learn how to turn your waste into a valuable resource for the planet.',
