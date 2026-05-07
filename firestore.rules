@@ -142,7 +142,8 @@ service cloud.firestore {
     }
 
     match /recyclingRoutes/{routeId} {
-      allow read: if isValidId(routeId);
+      allow get: if isValidId(routeId);
+      allow list: if true;
       allow create, update, delete: if isModerator() && isValidRecyclingRoute(incoming());
     }
   }
