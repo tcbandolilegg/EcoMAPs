@@ -16,28 +16,57 @@ app.use((req, res, next) => {
 
 // Caminho absoluto para a pasta dist
 const distPath = path.resolve(__dirname, 'dist');
+const indexPath = path.join(distPath, 'index.html');
+
+// Verificação de inicialização para o log do Hostinger
+import fs from 'fs';
+if (!fs.existsSync(distPath)) {
+  console.error(`ERRO CRÍTICO: Pasta 'dist' não encontrada em: ${distPath}`);
+  console.error('Certifique-se de que "npm run build" foi executado antes de iniciar o servidor.');
+} else if (!fs.existsSync(indexPath)) {
+  console.error(`AVISO: 'index.html' não encontrado em: ${indexPath}`);
+}
+
+// Rota de Diagnóstico / Saúde
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV,
+    distExists: fs.existsSync(distPath)
+  });
+});
 
 // Serve arquivos estáticos
 app.use(express.static(distPath));
 
-// Tratamento específico para favicon.ico para evitar 404 se não existir
+// Tratamento para favicon
 app.get('/favicon.ico', (req, res) => {
-  res.sendFile(path.join(distPath, 'favicon.svg'));
+  if (fs.existsSync(path.join(distPath, 'favicon.svg'))) {
+    res.sendFile(path.join(distPath, 'favicon.svg'));
+  } else {
+    res.status(404).end();
+  }
 });
 
 // Fallback para SPA (Single Page Application)
 app.get('*', (req, res) => {
-  // Se for uma requisição de assets que não foi pega pelo express.static, não manda o index.html
-  if (req.url.startsWith('/assets/')) {
-    console.log(`Asset não encontrado: ${req.url}`);
-    return res.status(404).send('Asset not found');
+  // Ignora chamadas de assets que falharam no static para não servir o HTML por engano
+  if (req.path.startsWith('/assets/') || req.path.includes('.')) {
+    console.log(`404 Asset: ${req.path}`);
+    return res.status(404).send('Not found');
   }
   
-  console.log(`Servindo index.html para: ${req.url}`);
-  res.sendFile(path.join(distPath, 'index.html'));
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(500).send('Erro Interno: index.html não encontrado no servidor.');
+  }
 });
 
-app.listen(Number(PORT), '0.0.0.0', () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-  console.log(`Servindo arquivos de: ${distPath}`);
+const portToListen = Number(PORT);
+app.listen(portToListen, '0.0.0.0', () => {
+  console.log(`[EcoMaps] Servidor iniciado com sucesso!`);
+  console.log(`[EcoMaps] Porta: ${portToListen}`);
+  console.log(`[EcoMaps] Root: ${distPath}`);
 });
